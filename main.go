@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 )
 
 const inputFilePath = "message.txt"
@@ -19,6 +20,7 @@ func main() {
 	fmt.Printf("Reading data from %s\n", inputFilePath)
 	fmt.Println("=====================================")
 
+	currentLine := ""
 	for {
 		buffer := make([]byte, 8)
 
@@ -26,10 +28,20 @@ func main() {
 
 		if readBytes == 0 {
 			fmt.Printf("Unable to read the file: %s", err)
-			return
+			break
 		}
 
-		fmt.Printf("read: %s\n", buffer)
+		data := currentLine + string(buffer[:readBytes])
+		parts := strings.Split(data, "\n")
+
+		for i := 0; i < len(parts)-1; i++ {
+			fmt.Printf("read: %s\n", parts[i])
+		}
+
+		currentLine = parts[len(parts)-1]
 	}
 
+	if currentLine != "" {
+		fmt.Printf("read: %s\n", currentLine)
+	}
 }
