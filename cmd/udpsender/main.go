@@ -14,15 +14,15 @@ func main() {
 	raddr, err := net.ResolveUDPAddr("udp", addr)
 
 	if err != nil {
-		log.Fatalf("😭 error listening for UDP traffic:", err)
+		log.Fatalf("Error listening for UDP traffic: %s", err)
 		return
 	}
 
-	fmt.Printf("✅ UDP Addr is ready on %s\n\n", raddr)
+	fmt.Printf("UDP Addr is ready on %s\n\n", raddr)
 
 	conn, err := net.DialUDP(raddr.Network(), nil, raddr)
 	if err != nil {
-		log.Fatalf("😭 error dialing UDP: %s\n", err)
+		log.Fatalf("Error dialing UDP: %s\n", err)
 	}
 	defer conn.Close()
 
@@ -34,13 +34,13 @@ func main() {
 		text, err := reader.ReadString('\n')
 
 		if err != nil {
-			log.Fatalf("😭 Error reading the input: %s\n", err)
+			log.Fatalf("Error reading the input: %s\n", err)
 			return
 		}
 
 		_, err = conn.Write([]byte(text))
 		if err != nil {
-			log.Fatalf("😭 Error sending the message: %s\n", err)
+			log.Fatalf("Error sending the message: %s\n", err)
 		}
 	}
 

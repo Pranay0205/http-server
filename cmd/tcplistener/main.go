@@ -55,7 +55,7 @@ func main() {
 
 	listener, err := net.Listen("tcp", port)
 	if err != nil {
-		log.Fatalf("❌ error listening for TCP traffic: %s\n", err.Error())
+		log.Fatalf("Error listening for TCP traffic: %s\n", err.Error())
 		return
 	}
 
@@ -64,17 +64,17 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Fatalf("❌ %s", err)
+			log.Fatalf("%s", err)
 		}
 
-		fmt.Printf("🔗 Connection established :%s\n", conn.RemoteAddr())
+		fmt.Printf("Connection established :%s\n", conn.RemoteAddr())
 
 		lines := getLinesChannel(conn)
 
 		for line := range lines {
-			fmt.Printf("✍️  %s\n", line)
+			fmt.Printf("%s\n", line)
 		}
-		log.Println("⛓️‍💥 Connection to ", conn.RemoteAddr(), "closed")
+		log.Println("Connection to ", conn.RemoteAddr(), "closed")
 	}
 
 }
