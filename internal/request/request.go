@@ -18,55 +18,63 @@ type RequestLine struct {
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	content, err := io.ReadAll(reader)
-	if len(content) == 0 {
-		return nil, fmt.Errorf("HTTP request is empty")
+	if err != nil {
+		return nil, fmt.Errorf("invalid request: unable to read content: %w", err)
 	}
-	if len(content) == 0 || err != nil {
-		return nil, fmt.Errorf("unable to read the request line: %w", err)
+	if len(content) == 0 {
+		return nil, fmt.Errorf("invalid request: empty content")
 	}
 
 	req, err := parseRequestLine(content)
-
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse the request: %w", err)
+		return nil, err
 	}
 
 	return req, nil
 }
 
-func parseRequestLine(content []byte) (*Request, error) {
-
+func parseRequestLine(content []byte) (*RequestLine, error) {
 	if len(content) == 0 {
-		return nil, fmt.Errorf("HTTP Message is empty")
+		return nil, fmt.Errorf("invalid request: empty content")
 	}
 
 	lines := strings.Split(string(content), "\r\n")
-
 	if len(lines) == 0 {
-		return nil, fmt.Errorf("HTTP Message is not in correct format")
+		return nil, fmt.Errorf("invalid request format: no lines found")
 	}
 
 	requestLine := lines[0]
-
 	parts := strings.Split(requestLine, " ")
 
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid HTTP Message")
+		return nil, fmt.Errorf("invalid request line: expected 3 parts, got %d", len(parts))
 	}
 
-	if parts[0] != strings.ToUpper(parts[0]) {
-		return nil, fmt.Errorf("HTTP method is not in correct format")
+	httpMethod := parts[0]
+	if httpMethod != strings.ToUpper(httpMethod) {
+		return nil, fmt.Errorf("invalid HTTP method: must be uppercase")
 	}
 
-	if !strings.Contains(parts[2], "HTTP/1.1") {
-		return nil, fmt.Errorf("HTTP Message version unsupported")
+	requestTarget := parts[1]
+
+	versionParts := strings.Split(parts[2], "/")
+	if len(versionParts) != 2 {
+		return nil, fmt.Errorf("invalid HTTP version: missing version parts %s", parts[2])
 	}
 
-	req := Request{}
+	httpPart := versionParts[0]
+	if httpPart != "HTTP" {
+		return nil, fmt.Errorf("invalid HTTP version: unrecognized HTTP-version %s", httpPart)
+	}
 
-	req.RequestLine.Method = parts[0]
-	req.RequestLine.HttpVersion = strings.Split(parts[2], "/")[1]
-	req.RequestLine.RequestTarget = parts[1]
+	httpVersion := versionParts[1]
+	if httpVersion != "1.1" {
+		return nil, fmt.Errorf("invalid HTTP version: unrecognized HTTP-version %s", httpVersion)
+	}
 
-	return &req, nil
+	return &RequestLine{
+		Method:        httpMethod,
+		RequestTarget: requestTarget,
+		HttpVersion:   httpVersion,
+	}, nil
 }
