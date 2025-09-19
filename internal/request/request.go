@@ -1,6 +1,8 @@
 package request
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -8,42 +10,97 @@ import (
 
 type Request struct {
 	RequestLine RequestLine
+	state       State
 }
 
 type RequestLine struct {
-	HttpVersion   string
-	RequestTarget string
-	Method        string
+	HttpVersion     string
+	RequestTarget   string
+	Method          string
+	NumBytesPerRead int
 }
+
+type State int
+
+const (
+	initialized State = iota
+	done
+)
+
+const crlf = "\r\n"
+
+const bufferSize = 8
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	content, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("invalid request: unable to read content: %w", err)
-	}
-	if len(content) == 0 {
-		return nil, fmt.Errorf("invalid request: empty content")
+	buf := make([]byte, bufferSize)
+
+	readToIndex := 0
+
+	request := Request{}
+	request.state = initialized
+
+	for request.state != done {
+		if readToIndex >= len(buf) {
+			new_buf := make([]byte, len(buf)*2)
+			copy(new_buf, buf[:readToIndex])
+			buf = new_buf
+		}
+
+		readBytes, err := reader.Read(buf[readToIndex:])
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				request.state = done
+				break
+			}
+			return &request, err
+		}
+
+		readToIndex += readBytes
+
+		bytesParsed, err := request.parse(buf[:readToIndex])
+		if err != nil {
+			request.state = done
+			return &request, err
+		}
+
+		if bytesParsed > 0 {
+			copy(buf, buf[bytesParsed:])
+			readToIndex -= bytesParsed
+		}
+
 	}
 
-	req, err := parseRequestLine(content)
-	if err != nil {
-		return nil, err
+	if request.state != done {
+		return nil, fmt.Errorf("incomplete request: no valid request line found")
 	}
-
-	return req, nil
+	return &request, nil
 }
 
-func parseRequestLine(content []byte) (*RequestLine, error) {
-	if len(content) == 0 {
-		return nil, fmt.Errorf("invalid request: empty content")
+func parseRequestLine(content []byte) (*RequestLine, int, error) {
+
+	idx := bytes.Index(content, []byte(crlf))
+	if idx == -1 {
+		return &RequestLine{NumBytesPerRead: 0}, 0, nil
 	}
 
-	lines := strings.Split(string(content), "\r\n")
-	if len(lines) == 0 {
-		return nil, fmt.Errorf("invalid request format: no lines found")
+	line := string(content[:idx])
+
+	reqLine, err := requestLineExtractor(line)
+
+	if err != nil {
+		return nil, 0, err
 	}
 
-	requestLine := lines[0]
+	return reqLine, idx + len(crlf), nil
+
+}
+
+func requestLineExtractor(line string) (*RequestLine, error) {
+	if len(line) == 0 {
+		return nil, fmt.Errorf("invalid request format: no request line found")
+	}
+
+	requestLine := line
 	parts := strings.Split(requestLine, " ")
 
 	if len(parts) != 3 {
@@ -77,4 +134,34 @@ func parseRequestLine(content []byte) (*RequestLine, error) {
 		RequestTarget: requestTarget,
 		HttpVersion:   httpVersion,
 	}, nil
+}
+
+func (r *Request) parse(data []byte) (int, error) {
+
+	switch r.state {
+
+	case initialized:
+		requestLine, bytesRead, err := parseRequestLine(data)
+		if err != nil {
+			return 0, err
+		}
+
+		if bytesRead == 0 {
+			return 0, nil
+		}
+
+		r.RequestLine = *requestLine
+		r.state = done
+
+		return bytesRead, nil
+	case done:
+
+		return 0, fmt.Errorf("invalid state of the request: tryin to read data in done state")
+
+	default:
+
+		return 0, fmt.Errorf("unknown state of the request: %d", r.state)
+
+	}
+
 }
