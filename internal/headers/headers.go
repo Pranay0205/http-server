@@ -59,6 +59,10 @@ func headerLineExtractor(headerLine string) (key, value string, err error) {
 		return "", "", fmt.Errorf("no split element found")
 	}
 
+	if parts[0] == "" {
+		return "", "", fmt.Errorf("empty key not allowed")
+	}
+
 	if parts[0] != strings.TrimSpace(parts[0]) {
 		return "", "", fmt.Errorf("invalid header format: additional space detected")
 	}
