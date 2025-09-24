@@ -16,6 +16,7 @@ func NewHeaders() Headers {
 	return make(Headers)
 }
 
+// Parses the header line
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	key, value, n, done, err := parseHeaderLine(data)
@@ -23,13 +24,16 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, done, err
 	}
 
-	key = strings.ToLower(key)
-
-	h[key] = value
+	if h.Has(key) {
+		h.Add(key, value)
+	} else {
+		h.Set(key, value)
+	}
 
 	return n, done, nil
 }
 
+// Parses header line and validates the key
 func parseHeaderLine(content []byte) (key, value string, n int, done bool, err error) {
 
 	idx := bytes.Index(content, []byte(crlf))
@@ -59,6 +63,7 @@ func parseHeaderLine(content []byte) (key, value string, n int, done bool, err e
 
 }
 
+// Extracts key, value from the headerline and validates formatting
 func headerLineExtractor(headerLine string) (key, value string, err error) {
 
 	headerLine = strings.Trim(headerLine, crlf)
@@ -80,4 +85,35 @@ func headerLineExtractor(headerLine string) (key, value string, err error) {
 	key, value = parts[0], strings.TrimSpace(parts[1])
 
 	return key, value, nil
+}
+
+// Set adds or updates a header (case-insensitive)
+func (h Headers) Set(key, value string) {
+	h[strings.ToLower(key)] = value
+}
+
+// Add appends a value to existing header or creates new one (case-insensitive)
+func (h Headers) Add(key, value string) {
+	lowerKey := strings.ToLower(key)
+	if existing, ok := h[lowerKey]; ok {
+		h[lowerKey] = existing + ", " + value
+	} else {
+		h[lowerKey] = value
+	}
+}
+
+// Get retrieves header value (case-insensitive)
+func (h Headers) Get(key string) string {
+	return h[strings.ToLower(key)]
+}
+
+// Has checks if header exists (case-insensitive)
+func (h Headers) Has(key string) bool {
+	_, ok := h[strings.ToLower(key)]
+	return ok
+}
+
+// Delete removes header (case-insensitive)
+func (h Headers) Delete(key string) {
+	delete(h, strings.ToLower(key))
 }
