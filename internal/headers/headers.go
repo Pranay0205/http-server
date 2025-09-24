@@ -3,6 +3,7 @@ package headers
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -21,6 +22,9 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	if err != nil {
 		return 0, done, err
 	}
+
+	key = strings.ToLower(key)
+
 	h[key] = value
 
 	return n, done, nil
@@ -43,6 +47,12 @@ func parseHeaderLine(content []byte) (key, value string, n int, done bool, err e
 
 	if err != nil {
 		return "", "", 0, false, err
+	}
+
+	invalidChars := regexp.MustCompile(`[^a-zA-Z0-9!#$%&'*\+\-\.^_` + "`" + `|~]+`)
+
+	if invalidChars.MatchString(key) {
+		return "", "", 0, false, fmt.Errorf("invalid header name")
 	}
 
 	return key, value, idx + len(crlf), false, nil
