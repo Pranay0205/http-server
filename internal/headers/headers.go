@@ -24,10 +24,12 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, done, err
 	}
 
-	if h.Has(key) {
-		h.Add(key, value)
-	} else {
-		h.Set(key, value)
+	if key != "" {
+		if h.Has(key) {
+			h.Add(key, value)
+		} else {
+			h.Set(key, value)
+		}
 	}
 
 	return n, done, nil
