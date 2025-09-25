@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"http-server/internal/headers"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -28,6 +29,7 @@ const (
 	requestStateInitialized State = iota
 	requestStateDone
 	requestStateParsingHeaders
+	requestStateParsingBody
 )
 
 const crlf = "\r\n"
@@ -54,6 +56,15 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		readBytes, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				if req.state == requestStateParsingBody {
+					contentValue, exists := req.Headers["content-length"]
+					if exists {
+						contentLength, _ := strconv.Atoi(contentValue)
+						if len(req.Body) < contentLength {
+							return nil, fmt.Errorf("invalid request: body length is less than defined Content-Length header")
+						}
+					}
+				}
 				req.state = requestStateDone
 				break
 			}
@@ -82,9 +93,9 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	return &req, nil
 }
 
-func (r *Request) parse(data []byte) (int, error) {
+func (req *Request) parse(data []byte) (int, error) {
 
-	switch r.state {
+	switch req.state {
 
 	case requestStateInitialized:
 		requestLine, bytesRead, err := parseRequestLine(data)
@@ -96,8 +107,8 @@ func (r *Request) parse(data []byte) (int, error) {
 			return 0, nil
 		}
 
-		r.RequestLine = *requestLine
-		r.state = requestStateParsingHeaders
+		req.RequestLine = *requestLine
+		req.state = requestStateParsingHeaders
 
 		return bytesRead, nil
 	case requestStateDone:
@@ -106,7 +117,7 @@ func (r *Request) parse(data []byte) (int, error) {
 
 	case requestStateParsingHeaders:
 
-		h := r.Headers
+		h := req.Headers
 
 		totalBytesParsed, done, err := h.Parse(data)
 
@@ -115,14 +126,43 @@ func (r *Request) parse(data []byte) (int, error) {
 		}
 
 		if done {
-			r.state = requestStateDone
+			req.state = requestStateParsingBody
 		}
 
 		return totalBytesParsed, nil
 
+	case requestStateParsingBody:
+		contentValue, exists := req.Headers["content-length"]
+
+		if !exists {
+			if len(data) > 0 {
+				return 0, fmt.Errorf("invalid request: Content-Length header missing for non-empty body")
+			}
+			req.state = requestStateDone
+			return 0, nil
+		}
+
+		req.Body = append(req.Body, data...)
+
+		contentLength, err := strconv.Atoi(contentValue)
+
+		if err != nil {
+			return 0, err
+		}
+
+		if len(req.Body) > contentLength {
+			return 0, fmt.Errorf("invalid request: body length exceeds Content-Length header")
+		}
+
+		if len(req.Body) == contentLength {
+			req.state = requestStateDone
+		}
+
+		return len(data), nil
+
 	default:
 
-		return 0, fmt.Errorf("unknown state of the request: %d", r.state)
+		return 0, fmt.Errorf("unknown state of the request: %d", req.state)
 
 	}
 }
