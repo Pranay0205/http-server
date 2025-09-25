@@ -29,11 +29,20 @@ func main() {
 
 		if err != nil {
 			log.Fatalf("%s", err)
+			conn.Close()
+			continue
 		}
 
 		fmt.Printf("Request line:\n - Method: %s\n - Target: %s\n - Version: %s\n", reqLine.RequestLine.Method, reqLine.RequestLine.RequestTarget, reqLine.RequestLine.HttpVersion)
 
+		fmt.Printf("Headers:\n")
+		for key, value := range reqLine.Headers {
+			fmt.Printf("- %s: %s\n", key, value)
+		}
+
 		fmt.Printf("Connection established :%s\n", conn.RemoteAddr())
+
+		conn.Close()
 
 		log.Println("Connection to ", conn.RemoteAddr(), "closed")
 	}
