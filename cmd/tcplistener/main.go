@@ -40,6 +40,11 @@ func main() {
 			fmt.Printf("- %s: %s\n", key, value)
 		}
 
+		if len(reqLine.Body) > 0 {
+			fmt.Printf("Body:\n")
+			fmt.Println(string(reqLine.Body))
+		}
+
 		fmt.Printf("Connection established :%s\n", conn.RemoteAddr())
 
 		conn.Close()
