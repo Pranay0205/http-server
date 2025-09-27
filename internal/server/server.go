@@ -2,73 +2,64 @@ package server
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"sync/atomic"
 )
 
 type Server struct {
-	Listner net.Listener
-	enabled *atomic.Bool
+	listener net.Listener
+	enabled  *atomic.Bool
 }
 
 func Serve(port int) (*Server, error) {
-
-	l, err := net.Listen("tcp", ":"+fmt.Sprint(port))
-
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
 	}
 
-	enabled := &atomic.Bool{}
-	enabled.Store(true)
+	s := &Server{
+		listener: l,
+		enabled:  &atomic.Bool{},
+	}
+	s.enabled.Store(true)
 
-	server := Server{Listner: l, enabled: enabled}
-
-	go func(server *Server) {
-		server.listen()
-	}(&server)
-
-	return &server, nil
-
+	go s.listen()
+	return s, nil
 }
 
 func (s *Server) listen() {
 	for s.enabled.Load() {
-		conn, err := s.Listner.Accept()
-
+		conn, err := s.listener.Accept()
 		if err != nil {
+
 			if !s.enabled.Load() {
 				return
 			}
-			s.Close()
-			log.Fatalf("Unable to establish a connection")
+			log.Printf("Error accepting connection: %v", err)
+			continue
 		}
-
 		go s.handle(conn)
-
 	}
 }
 
 func (s *Server) Close() error {
-	err := s.Listner.Close()
 	s.enabled.Store(false)
-	if err != nil {
-		return err
+	if s.listener != nil {
+		return s.listener.Close()
 	}
-
 	return nil
 }
 
 func (s *Server) handle(conn net.Conn) {
-	message := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!")
+	defer conn.Close()
+	response := "HTTP/1.1 200 OK\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"Hello, World!"
 
-	_, err := conn.Write(message)
+	_, err := conn.Write([]byte(response))
 	if err != nil {
-		log.Printf("Unable to write the connection")
+		log.Printf("Error writing response: %v", err)
 	}
-
-	io.Copy(conn, conn)
-	conn.Close()
 }
