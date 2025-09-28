@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"http-server/internal/headers"
 	"io"
-	"strings"
 )
 
 type StatusCode int
@@ -50,17 +49,18 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return header
 }
 
-func WriteHeader(w io.Writer, headers headers.Headers) error {
-	headerStr := strings.Join([]string{
-		headers["Content-Length"],
-		headers["Connection"],
-		headers["Content-Type"],
-	}, crlf)
+func WriteHeaders(w io.Writer, headers headers.Headers) error {
+	for key, value := range headers {
+		headerLine := fmt.Sprintf("%s: %s%s", key, value, crlf)
+		_, err := w.Write([]byte(headerLine))
+		if err != nil {
+			return fmt.Errorf("unable to write headers to response: %w", err)
+		}
+	}
 
-	_, err := w.Write([]byte(headerStr))
-
+	_, err := w.Write([]byte(crlf))
 	if err != nil {
-		return fmt.Errorf("unable to write headers to response: %w", err)
+		return fmt.Errorf("unable to write header separator: %w", err)
 	}
 
 	return nil
