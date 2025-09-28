@@ -25,15 +25,17 @@ var statusLines = map[StatusCode][]byte{
 }
 
 func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
-
 	statusLine, exists := statusLines[statusCode]
 
 	if !exists {
 		return fmt.Errorf("unsupported status code: %d", statusCode)
 	}
-	statusLine = append(statusLine, crlf...)
-	_, err := w.Write(statusLine)
 
+	statusLineCopy := make([]byte, len(statusLine))
+	copy(statusLineCopy, statusLine)
+	statusLineCopy = append(statusLineCopy, crlf...)
+
+	_, err := w.Write(statusLineCopy)
 	return err
 }
 
@@ -51,7 +53,8 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 
 func WriteHeaders(w io.Writer, headers headers.Headers) error {
 	for key, value := range headers {
-		headerLine := fmt.Sprintf("%s: %s%s", key, value, crlf)
+		headerLine := key + ":" + value + crlf
+
 		_, err := w.Write([]byte(headerLine))
 		if err != nil {
 			return fmt.Errorf("unable to write headers to response: %w", err)
