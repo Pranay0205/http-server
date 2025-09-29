@@ -3,13 +3,11 @@ package response
 import (
 	"fmt"
 	"http-server/internal/headers"
-	"io"
 	"log"
 )
 
 type StatusCode int
-
-const crlf = "\r\n"
+type State int
 
 const (
 	StatusSuccess       StatusCode = 200
@@ -18,6 +16,22 @@ const (
 	StatusInternalError StatusCode = 500
 )
 
+const (
+	stateInitialized State = iota
+	stateStatusWritten
+	stateHeadersWritten
+	stateBodyWritten
+)
+
+type Writer struct {
+	Headers     headers.Headers
+	StatusCode  StatusCode
+	Body        []byte
+	writerState State
+}
+
+const crlf = "\r\n"
+
 var statusLines = map[StatusCode][]byte{
 	StatusSuccess:       []byte("HTTP/1.1 200 OK"),
 	StatusBadRequest:    []byte("HTTP/1.1 400 Bad Request"),
@@ -25,7 +39,12 @@ var statusLines = map[StatusCode][]byte{
 	StatusInternalError: []byte("HTTP/1.1 500 Internal Server Error"),
 }
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+
+	if w.writerState != stateInitialized {
+		return fmt.Errorf("status line already written or invalid state")
+	}
+
 	statusLine, exists := statusLines[statusCode]
 
 	if !exists {
@@ -36,38 +55,69 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 	copy(statusLineCopy, statusLine)
 	statusLineCopy = append(statusLineCopy, crlf...)
 
-	_, err := w.Write(statusLineCopy)
-	return err
-}
+	log.Printf("Writing Statusline to response: %s", statusLineCopy)
+	w.Body = append(w.Body, statusLineCopy...)
 
-func GetDefaultHeaders(contentLen int) headers.Headers {
-	header := make(headers.Headers)
-
-	header.Add("Content-Length", fmt.Sprintf("%d", contentLen))
-
-	header.Add("Connection", "close")
-
-	header.Add("Content-Type", "text/plain")
-
-	return header
-}
-
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
-	for key, value := range headers {
-		headerLine := key + ": " + value + crlf
-		log.Printf("Headerline : %s", headerLine)
-		_, err := w.Write([]byte(headerLine))
-		if err != nil {
-
-			log.Printf("Error From Write Headers: %s", err)
-			return fmt.Errorf("unable to write headers to response: %w", err)
-		}
-	}
-
-	_, err := w.Write([]byte(crlf))
-	if err != nil {
-		return fmt.Errorf("unable to write header separator: %w", err)
-	}
+	defer w.SetState(stateStatusWritten)
 
 	return nil
+}
+
+func (w *Writer) Header() headers.Headers {
+	return w.Headers
+}
+
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+
+	if w.writerState != stateStatusWritten {
+		return fmt.Errorf("must write status line before headers")
+	}
+
+	for key, value := range headers {
+		headerLine := key + ": " + value + crlf
+		log.Printf("key: %s, value: %s", key, value)
+		log.Printf("Writing Headerline to response: %s", headerLine)
+		w.Body = append(w.Body, headerLine...)
+	}
+	w.Body = append(w.Body, crlf...)
+
+	defer w.SetState(stateHeadersWritten)
+
+	return nil
+}
+
+func (w *Writer) WriteBody(p []byte) (int, error) {
+
+	if w.writerState != stateHeadersWritten {
+		return 0, fmt.Errorf("must write headers before body")
+	}
+
+	log.Printf("Writing body to response: %s", p)
+	w.Body = append(w.Body, p...)
+
+	defer w.SetState(stateBodyWritten)
+
+	return len(p), nil
+}
+
+func (w *Writer) GetDefaultHeaders(contentLen int) error {
+	if w.writerState == stateInitialized {
+		return fmt.Errorf("must write status line before headers")
+	}
+	w.Headers.Add("Content-Length", fmt.Sprintf("%d", contentLen))
+
+	w.Headers.Add("Connection", "close")
+
+	return nil
+}
+
+func NewWriter() *Writer {
+	return &Writer{
+		Headers:     headers.NewHeaders(),
+		writerState: stateInitialized,
+	}
+}
+
+func (w *Writer) SetState(s State) {
+	w.writerState = s
 }
