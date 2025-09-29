@@ -11,42 +11,54 @@ import (
 	"sync/atomic"
 )
 
+type Handler func(w io.Writer, req *request.Request) *HandlerError
+
 type HandlerError struct {
-	StatusCode   response.StatusCode
-	ErrorMessage error
+	StatusCode response.StatusCode
+	Message    string
 }
 
-type HandlerFunc func(w io.Writer, req *request.Request) *HandlerError
+func (he HandlerError) Write(w io.Writer) {
+	response.WriteStatusLine(w, he.StatusCode)
+	messageBytes := []byte(he.Message)
+	headers := response.GetDefaultHeaders(len(messageBytes))
+	response.WriteHeaders(w, headers)
+	w.Write(messageBytes)
+}
 
+// Server is an HTTP 1.1 server
 type Server struct {
+	handler  Handler
 	listener net.Listener
-	enabled  *atomic.Bool
-	handler  HandlerFunc
+	closed   atomic.Bool
 }
 
-func Serve(port int, handlerFunc HandlerFunc) (*Server, error) {
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+func Serve(port int, handler Handler) (*Server, error) {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
 	}
-
 	s := &Server{
-		listener: l,
-		enabled:  &atomic.Bool{},
-		handler:  handlerFunc,
+		handler:  handler,
+		listener: listener,
 	}
-	s.enabled.Store(true)
-
 	go s.listen()
 	return s, nil
 }
 
+func (s *Server) Close() error {
+	s.closed.Store(true)
+	if s.listener != nil {
+		return s.listener.Close()
+	}
+	return nil
+}
+
 func (s *Server) listen() {
-	for s.enabled.Load() {
+	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
-
-			if !s.enabled.Load() {
+			if s.closed.Load() {
 				return
 			}
 			log.Printf("Error accepting connection: %v", err)
@@ -56,76 +68,27 @@ func (s *Server) listen() {
 	}
 }
 
-func (s *Server) Close() error {
-	s.enabled.Store(false)
-	if s.listener != nil {
-		return s.listener.Close()
-	}
-	return nil
-}
-
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		log.Printf("Error writing response: %v", err)
-		writehandleError(conn, HandlerError{StatusCode: response.StatusBadRequest, ErrorMessage: err})
-		return
-	}
-
-	var wb = make([]byte, 0, 10485760)
-	responseBody := bytes.NewBuffer(wb)
-
-	handlerErr := s.handler(responseBody, req)
-
-	if handlerErr != nil {
-
-		writehandleError(conn, *handlerErr)
-		return
-
-	} else {
-
-		err = response.WriteStatusLine(conn, response.StatusSuccess)
-		if err != nil {
-			log.Printf("Error writing response: %v", err)
+		hErr := &HandlerError{
+			StatusCode: response.StatusBadRequest,
+			Message:    err.Error(),
 		}
-
-		headers := response.GetDefaultHeaders(responseBody.Len())
-
-		err = response.WriteHeaders(conn, headers)
-		if err != nil {
-			log.Printf("Error writing response: %v", err)
-		}
-
-		_, err = conn.Write(responseBody.Bytes())
-		if err != nil {
-			log.Printf("Error writing body: %v", err)
-		}
-	}
-
-}
-
-func writehandleError(w io.Writer, handlerErr HandlerError) {
-
-	err := response.WriteStatusLine(w, handlerErr.StatusCode)
-	if err != nil {
-		log.Printf("Error writing status line: %v", err)
+		hErr.Write(conn)
 		return
 	}
-
-	errMessage := handlerErr.ErrorMessage.Error()
-	headers := response.GetDefaultHeaders(len(errMessage))
-
-	err = response.WriteHeaders(w, headers)
-	if err != nil {
-		log.Printf("Error writing the headers: %v", err)
+	buf := bytes.NewBuffer([]byte{})
+	hErr := s.handler(buf, req)
+	if hErr != nil {
+		hErr.Write(conn)
 		return
 	}
-
-	_, err = w.Write([]byte(errMessage))
-
-	if err != nil {
-		log.Printf("Error writing to the writer: %v", err)
-		return
-	}
+	b := buf.Bytes()
+	response.WriteStatusLine(conn, response.StatusSuccess)
+	headers := response.GetDefaultHeaders(len(b))
+	response.WriteHeaders(conn, headers)
+	conn.Write(b)
+	return
 }

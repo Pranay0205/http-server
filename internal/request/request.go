@@ -38,7 +38,6 @@ const bufferSize = 8
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)
-
 	readToIndex := 0
 
 	req := Request{}
@@ -47,47 +46,67 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	for req.state != requestStateDone {
 
+		if readToIndex > 0 {
+			for {
+				totalBytesParsed, err := req.parse(buf[:readToIndex])
+				if err != nil {
+					return nil, err
+				}
+
+				if totalBytesParsed == 0 {
+					break
+				}
+
+				if totalBytesParsed > 0 {
+					copy(buf, buf[totalBytesParsed:])
+					readToIndex -= totalBytesParsed
+				}
+
+				if req.state == requestStateDone {
+					return &req, nil
+				}
+			}
+		}
+
+		if req.state == requestStateDone {
+			break
+		}
+
 		if readToIndex >= len(buf) {
-			new_buf := make([]byte, len(buf)*2)
-			copy(new_buf, buf[:readToIndex])
-			buf = new_buf
+			newBuf := make([]byte, len(buf)*2)
+			copy(newBuf, buf[:readToIndex])
+			buf = newBuf
 		}
 
 		readBytes, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				if req.state == requestStateParsingBody {
-					contentValue, exists := req.Headers["content-length"]
-					if exists {
-						contentLength, _ := strconv.Atoi(contentValue)
-						if len(req.Body) < contentLength {
-							return nil, fmt.Errorf("invalid request: body length is less than defined Content-Length header")
-						}
+
+				readToIndex += readBytes
+
+				for readToIndex > 0 {
+					totalBytesParsed, parseErr := req.parse(buf[:readToIndex])
+					if parseErr != nil {
+						return nil, parseErr
 					}
+
+					if totalBytesParsed == 0 {
+						break
+					}
+
+					copy(buf, buf[totalBytesParsed:])
+					readToIndex -= totalBytesParsed
 				}
-				req.state = requestStateDone
+
+				if req.state != requestStateDone {
+					return nil, fmt.Errorf("incomplete request: in state %d", req.state)
+				}
 				break
 			}
-			return &req, err
+			return nil, err
 		}
 
 		readToIndex += readBytes
-
-		totalBytesParsed, err := req.parse(buf[:readToIndex])
-		if err != nil {
-			req.state = requestStateDone
-			return &req, err
-		}
-
-		if totalBytesParsed > 0 {
-			copy(buf, buf[totalBytesParsed:])
-			readToIndex -= totalBytesParsed
-		}
-
-	}
-
-	if req.state != requestStateDone {
-		return nil, fmt.Errorf("incomplete request: no valid request line found")
 	}
 
 	return &req, nil
@@ -139,7 +158,7 @@ func (req *Request) parse(data []byte) (int, error) {
 				return 0, fmt.Errorf("invalid request: Content-Length header missing for non-empty body")
 			}
 			req.state = requestStateDone
-			return 0, nil
+			return len(data), nil
 		}
 
 		req.Body = append(req.Body, data...)

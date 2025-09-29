@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"http-server/internal/headers"
 	"io"
+	"log"
 )
 
 type StatusCode int
@@ -53,10 +54,12 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 
 func WriteHeaders(w io.Writer, headers headers.Headers) error {
 	for key, value := range headers {
-		headerLine := key + ":" + value + crlf
-
+		headerLine := key + ": " + value + crlf
+		log.Printf("Headerline : %s", headerLine)
 		_, err := w.Write([]byte(headerLine))
 		if err != nil {
+
+			log.Printf("Error From Write Headers: %s", err)
 			return fmt.Errorf("unable to write headers to response: %w", err)
 		}
 	}
