@@ -37,7 +37,7 @@ func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 	copy(statusLineCopy, statusLine)
 	statusLineCopy = append(statusLineCopy, crlf...)
 
-	log.Printf("Writing Statusline to response: %s", statusLineCopy)
+	log.Printf("Writing Statusline to response: %s\n", statusLineCopy)
 	w.Body = append(w.Body, statusLineCopy...)
 
 	defer w.SetState(stateStatusWritten)

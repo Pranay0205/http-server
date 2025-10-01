@@ -71,9 +71,8 @@ func streamProxyResponse(w *response.Writer, res *http.Response) {
 	buf := make([]byte, 1024)
 	for {
 		n, err := res.Body.Read(buf)
-
+		log.Printf("read chunks = Hex: %X, Dec: %d bytes\n", n, n)
 		if n > 0 {
-			log.Println(n)
 			log.Printf("encoded string: %s\n", string(buf[:n]))
 			w.WriteChunkedBody(buf[:n])
 		}

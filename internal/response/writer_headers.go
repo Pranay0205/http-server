@@ -20,8 +20,7 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 
 	for key, value := range headers {
 		headerLine := key + ": " + value + crlf
-		log.Printf("key: %s, value: %s", key, value)
-		log.Printf("Writing Headerline to response: %s", headerLine)
+		log.Printf("Writing Headerline to response: %s\n", headerLine)
 		w.Body = append(w.Body, headerLine...)
 	}
 	w.Body = append(w.Body, crlf...)

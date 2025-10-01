@@ -11,7 +11,7 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 		return 0, fmt.Errorf("must write headers before body")
 	}
 
-	log.Printf("Writing body to response: %s", p)
+	log.Printf("Writing body to response: %s\n", p)
 	w.Body = append(w.Body, p...)
 
 	defer w.SetState(stateBodyWritten)
