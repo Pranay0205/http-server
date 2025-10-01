@@ -45,7 +45,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	req.state = requestStateInitialized
 
 	for req.state != requestStateDone {
-
+		// Parsing residual part in the buffer before reading it from the connection or reader.
+		// Prevents the blocking of the reader as it waits forever to read
 		if readToIndex > 0 {
 			for {
 				totalBytesParsed, err := req.parse(buf[:readToIndex])
@@ -68,10 +69,12 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			}
 		}
 
+		// double checking if we are done with the request
 		if req.state == requestStateDone {
 			break
 		}
 
+		// If buffer is full doubling it
 		if readToIndex >= len(buf) {
 			newBuf := make([]byte, len(buf)*2)
 			copy(newBuf, buf[:readToIndex])
