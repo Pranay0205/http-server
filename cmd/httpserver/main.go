@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"http-server/internal/request"
@@ -29,30 +31,102 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-func handler(w *response.Writer, req *request.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	if req.RequestLine.RequestTarget == "/yourproblem" {
-		body := []byte("<html><head><title>400 Bad Request</title></head><body><h1>Bad Request</h1><p>Your request honestly kinda sucked.</p></body></html>")
-		w.StatusCode = response.StatusBadRequest
-		w.WriteStatusLine(w.StatusCode)
-		w.GetDefaultHeaders(len(body))
-		w.WriteHeaders(w.Headers)
-		w.WriteBody(body)
-		return
-	}
-	if req.RequestLine.RequestTarget == "/myproblem" {
-		body := []byte("<html><head><title>500 Internal Server Error</title></head><body><h1>Internal Server Error</h1><p>Okay, you know what? This one is on me.</p></body></html>")
-		w.StatusCode = response.StatusInternalError
-		w.WriteStatusLine(w.StatusCode)
-		w.GetDefaultHeaders(len(body))
-		w.WriteHeaders(w.Headers)
-		w.WriteBody(body)
-		return
-	}
-	body := []byte("<html><head><title>200 OK</title></head><body><h1>Success!</h1><p>Your request was an absolute banger.</p></body></html>")
-	w.StatusCode = response.StatusSuccess
+func handleClientError(w *response.Writer) {
+	body := []byte("<html><head><title>400 Bad Request</title></head><body><h1>400 Bad Request</h1><p>The server could not understand the request due to invalid syntax.</p></body></html>")
+	w.StatusCode = response.StatusBadRequest
 	w.WriteStatusLine(w.StatusCode)
 	w.GetDefaultHeaders(len(body))
 	w.WriteHeaders(w.Headers)
 	w.WriteBody(body)
+}
+
+func handleServerError(w *response.Writer) {
+	body := []byte("<html><head><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1><p>The server encountered an unexpected condition that prevented it from fulfilling the request.</p></body></html>")
+	w.StatusCode = response.StatusInternalError
+	w.WriteStatusLine(w.StatusCode)
+	w.GetDefaultHeaders(len(body))
+	w.WriteHeaders(w.Headers)
+	w.WriteBody(body)
+}
+func handleProxyError(w *response.Writer, err error, newURL string) {
+	errorMessage := fmt.Sprintf("Error while proxying request to %s: %s", newURL, err)
+	body := []byte(fmt.Sprintf("<html><head><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1><p>%s</p></body></html>", errorMessage))
+
+	w.StatusCode = response.StatusInternalError
+	w.WriteStatusLine(w.StatusCode)
+	w.GetDefaultHeaders(len(body))
+	w.WriteHeaders(w.Headers)
+	w.WriteChunkedBody(body)
+	log.Printf("couldn't reach the site: %s\n", newURL)
+}
+func streamProxyResponse(w *response.Writer, res *http.Response) {
+	w.StatusCode = response.StatusSuccess
+	w.WriteStatusLine(w.StatusCode)
+	w.GetDefaultHeaders(int(res.ContentLength))
+	w.Header().Delete("Content-Length")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Header().Override("Content-Type", "application/json")
+	w.WriteHeaders(w.Headers)
+
+	buf := make([]byte, 1024)
+	for {
+		n, err := res.Body.Read(buf)
+
+		if n > 0 {
+			log.Println(n)
+			log.Printf("encoded string: %s\n", string(buf[:n]))
+			w.WriteChunkedBody(buf[:n])
+		}
+
+		if err != nil {
+			break
+		}
+	}
+	w.WriteChunkedBodyDone()
+
+}
+
+func getProxyURL(requestTarget string) string {
+	target := strings.TrimPrefix(requestTarget, "/")
+	newURL := strings.Replace(target, "httpbin", "httpbin.org", 1)
+	return "https://" + newURL
+}
+
+func handler(w *response.Writer, req *request.Request) {
+	w.Header().Override("Content-Type", "text/html")
+
+	if req.RequestLine.RequestTarget == "/yourproblem" {
+		handleClientError(w)
+		return
+	}
+
+	if req.RequestLine.RequestTarget == "/myproblem" {
+		handleServerError(w)
+		return
+	}
+
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
+		proxyhandler(w, *req)
+	} else {
+
+		body := []byte("<html><head><title>200 OK</title></head><body><h1>200 OK</h1><p>The request has succeeded.</p></body></html>")
+		w.StatusCode = response.StatusSuccess
+		w.WriteStatusLine(w.StatusCode)
+		w.GetDefaultHeaders(len(body))
+		w.WriteHeaders(w.Headers)
+		w.WriteBody(body)
+	}
+}
+
+func proxyhandler(w *response.Writer, req request.Request) {
+	newURL := ""
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
+		newURL = getProxyURL(req.RequestLine.RequestTarget)
+	}
+	res, err := http.Get(newURL)
+	if err != nil {
+		handleProxyError(w, err, newURL)
+		return
+	}
+	streamProxyResponse(w, res)
 }

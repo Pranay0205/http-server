@@ -34,7 +34,7 @@ const (
 
 const crlf = "\r\n"
 
-const bufferSize = 8
+const bufferSize = 32
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)
@@ -157,8 +157,8 @@ func (req *Request) parse(data []byte) (int, error) {
 		contentValue, exists := req.Headers["content-length"]
 
 		if !exists {
-			if len(data) > 0 {
-				return 0, fmt.Errorf("invalid request: Content-Length header missing for non-empty body")
+			if len(data) > 0 && req.RequestLine.Method != "GET" {
+				return 0, fmt.Errorf("invalid request: Content-Length header missing for non-empty body :%q", data)
 			}
 			req.state = requestStateDone
 			return len(data), nil

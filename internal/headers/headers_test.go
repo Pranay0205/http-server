@@ -138,7 +138,7 @@ func TestHeaders_NoCRLFFound(t *testing.T) {
 // Header Methods Tests
 func TestHeaders_SetAndGetWithDifferentCases(t *testing.T) {
 	headers := make(Headers)
-	headers.Set("Content-Type", "application/json")
+	headers.Override("Content-Type", "application/json")
 
 	// All these should return the same value
 	assert.Equal(t, "application/json", headers.Get("Content-Type"))

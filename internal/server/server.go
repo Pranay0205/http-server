@@ -62,6 +62,7 @@ func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
+		log.Printf("not able to get the request line: %s", err)
 		return
 	}
 	response := response.NewWriter()

@@ -26,9 +26,9 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	if key != "" {
 		if h.Has(key) {
-			h.Add(key, value)
-		} else {
 			h.Set(key, value)
+		} else {
+			h.Override(key, value)
 		}
 	}
 
@@ -89,13 +89,13 @@ func headerLineExtractor(headerLine string) (key, value string, err error) {
 	return key, value, nil
 }
 
-// Set adds or updates a header (case-insensitive)
-func (h Headers) Set(key, value string) {
+// Override updates a header (case-insensitive)
+func (h Headers) Override(key, value string) {
 	h[strings.ToLower(key)] = value
 }
 
-// Add appends a value to existing header or creates new one (case-insensitive)
-func (h Headers) Add(key, value string) {
+// Set appends a value to existing header or creates new one (case-insensitive)
+func (h Headers) Set(key, value string) {
 	lowerKey := strings.ToLower(key)
 	if existing, ok := h[lowerKey]; ok {
 		h[lowerKey] = existing + ", " + value

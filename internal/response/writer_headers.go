@@ -35,9 +35,9 @@ func (w *Writer) GetDefaultHeaders(contentLen int) error {
 	if w.writerState == stateInitialized {
 		return fmt.Errorf("must write status line before headers")
 	}
-	w.Headers.Add("Content-Length", fmt.Sprintf("%d", contentLen))
+	w.Headers.Set("Content-Length", fmt.Sprintf("%d", contentLen))
 
-	w.Headers.Add("Connection", "close")
+	w.Headers.Set("Connection", "close")
 
 	return nil
 }
