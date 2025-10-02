@@ -35,6 +35,7 @@ func main() {
 }
 
 func handleClientError(w *response.Writer) {
+	w.Header().Override("Content-Type", "text/html")
 	body := []byte("<html><head><title>400 Bad Request</title></head><body><h1>400 Bad Request</h1><p>The server could not understand the request due to invalid syntax.</p></body></html>")
 	w.StatusCode = response.StatusBadRequest
 	w.WriteStatusLine(w.StatusCode)
@@ -44,6 +45,7 @@ func handleClientError(w *response.Writer) {
 }
 
 func handleServerError(w *response.Writer) {
+	w.Header().Override("Content-Type", "text/html")
 	body := []byte("<html><head><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1><p>The server encountered an unexpected condition that prevented it from fulfilling the request.</p></body></html>")
 	w.StatusCode = response.StatusInternalError
 	w.WriteStatusLine(w.StatusCode)
@@ -53,6 +55,7 @@ func handleServerError(w *response.Writer) {
 }
 
 func handleProxyError(w *response.Writer, err error, newURL string) {
+	w.Header().Override("Content-Type", "text/html")
 	errorMessage := fmt.Sprintf("Error while proxying request to %s: %s", newURL, err)
 	body := []byte(fmt.Sprintf("<html><head><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1><p>%s</p></body></html>", errorMessage))
 
@@ -130,15 +133,20 @@ func getProxyURL(requestTarget string) string {
 }
 
 func handler(w *response.Writer, req *request.Request) {
-	w.Header().Override("Content-Type", "text/html")
 
 	if req.RequestLine.RequestTarget == "/yourproblem" {
+
 		handleClientError(w)
 		return
 	}
 
 	if req.RequestLine.RequestTarget == "/myproblem" {
 		handleServerError(w)
+		return
+	}
+
+	if req.RequestLine.RequestTarget == "/video" {
+		videorequestHandler(w, *req)
 		return
 	}
 
@@ -168,4 +176,22 @@ func proxyhandler(w *response.Writer, req request.Request) {
 		return
 	}
 	streamProxyResponse(w, res)
+}
+
+const videoFile = "./assets/vim.mp4"
+
+func videorequestHandler(w *response.Writer, req request.Request) {
+
+	videoData, err := os.ReadFile(videoFile)
+	if err != nil {
+		log.Println("unable to read the file: ", err)
+		return
+	}
+
+	w.StatusCode = response.StatusSuccess
+	w.WriteStatusLine(w.StatusCode)
+	w.GetDefaultHeaders(len(videoData))
+	w.Header().Override("Content-Type", "video/mp4")
+	w.WriteHeaders(w.Headers)
+	w.WriteBody(videoData)
 }
