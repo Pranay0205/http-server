@@ -119,3 +119,44 @@ func (h Headers) Has(key string) bool {
 func (h Headers) Delete(key string) {
 	delete(h, strings.ToLower(key))
 }
+
+// Announce Trailers
+func (h Headers) Announce(trailers string) error {
+	forbidden := []string{
+		"content-length", "transfer-encoding", "host",
+		"authorization", "proxy-authorization", "connection",
+		"upgrade", "proxy-connection", "content-encoding",
+		"content-type", "content-range", "trailer",
+	}
+
+	// Split trailers by comma and check each one individually
+	trailerNames := strings.Split(trailers, ",")
+	for _, trailer := range trailerNames {
+		cleanTrailer := strings.ToLower(strings.TrimSpace(trailer))
+
+		for _, forbiddenHeader := range forbidden {
+			if cleanTrailer == forbiddenHeader {
+				return fmt.Errorf("forbidden trailer header: %s", forbiddenHeader)
+			}
+		}
+	}
+
+	h["trailer"] = trailers
+	return nil
+}
+
+func (h Headers) SetTrailer(key, value string) error {
+	announced := h.Get("trailer")
+	announcedNames := strings.Split(announced, ",")
+
+	lowerKey := strings.ToLower(strings.TrimSpace(key))
+
+	for _, name := range announcedNames {
+		if strings.ToLower(strings.TrimSpace(name)) == lowerKey {
+			h[lowerKey] = value
+			return nil
+		}
+	}
+
+	return fmt.Errorf("trailer %s was not announced", key)
+}

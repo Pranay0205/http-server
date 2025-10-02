@@ -34,7 +34,7 @@ const (
 
 const crlf = "\r\n"
 
-const bufferSize = 32
+const bufferSize = 8
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize)

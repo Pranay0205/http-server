@@ -19,6 +19,7 @@ const (
 	stateStatusWritten
 	stateHeadersWritten
 	stateBodyWritten
+	stateTrailerWritten
 )
 
 type Writer struct {

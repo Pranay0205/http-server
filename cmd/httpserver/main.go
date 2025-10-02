@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -27,7 +29,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-	fmt.Println()
+	log.Println()
 	log.Println("Server gracefully stopped")
 }
 
@@ -48,6 +50,7 @@ func handleServerError(w *response.Writer) {
 	w.WriteHeaders(w.Headers)
 	w.WriteBody(body)
 }
+
 func handleProxyError(w *response.Writer, err error, newURL string) {
 	errorMessage := fmt.Sprintf("Error while proxying request to %s: %s", newURL, err)
 	body := []byte(fmt.Sprintf("<html><head><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1><p>%s</p></body></html>", errorMessage))
@@ -59,30 +62,63 @@ func handleProxyError(w *response.Writer, err error, newURL string) {
 	w.WriteChunkedBody(body)
 	log.Printf("couldn't reach the site: %s\n", newURL)
 }
+
 func streamProxyResponse(w *response.Writer, res *http.Response) {
 	w.StatusCode = response.StatusSuccess
 	w.WriteStatusLine(w.StatusCode)
 	w.GetDefaultHeaders(int(res.ContentLength))
-	w.Header().Delete("Content-Length")
 	w.Header().Set("Transfer-Encoding", "chunked")
+	err := w.Header().Announce("X-Content-SHA256, X-Content-Length")
+	if err != nil {
+		log.Printf("Error announcing trailers: %v", err)
+	}
+
+	w.Header().Delete("Content-Length")
 	w.Header().Override("Content-Type", "application/json")
 	w.WriteHeaders(w.Headers)
 
 	buf := make([]byte, 1024)
+	responseBody := ""
 	for {
 		n, err := res.Body.Read(buf)
 		log.Printf("read chunks = Hex: %X, Dec: %d bytes\n", n, n)
 		if n > 0 {
-			log.Printf("encoded string: %s\n", string(buf[:n]))
-			w.WriteChunkedBody(buf[:n])
+			log.Println("encoded string: ", string(buf[:n]))
+			_, err := w.WriteChunkedBody(buf[:n])
+			if err != nil {
+				log.Println("unable to write the body: ", err)
+				break
+			}
+			responseBody += string(buf[:n])
+		}
+
+		if err == io.EOF {
+			break
 		}
 
 		if err != nil {
+			log.Println("Error reading response body:", err)
 			break
 		}
 	}
-	w.WriteChunkedBodyDone()
+	_, err = w.WriteChunkedBodyDone()
+	if err != nil {
+		log.Println("Error writing chunked body done:", err)
+	}
 
+	sha256 := fmt.Sprintf("%x", sha256.Sum256([]byte(responseBody)))
+
+	err = w.Header().SetTrailer("X-Content-SHA256", sha256)
+	if err != nil {
+		log.Printf("Error setting SHA256 trailer: %v", err)
+	}
+
+	err = w.Header().SetTrailer("X-Content-Length", fmt.Sprintf("%d", len(responseBody)))
+	if err != nil {
+		log.Printf("Error setting length trailer: %v", err)
+	}
+
+	w.WriteTrailers(w.Headers)
 }
 
 func getProxyURL(requestTarget string) string {
@@ -106,6 +142,7 @@ func handler(w *response.Writer, req *request.Request) {
 
 	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
 		proxyhandler(w, *req)
+		return
 	} else {
 
 		body := []byte("<html><head><title>200 OK</title></head><body><h1>200 OK</h1><p>The request has succeeded.</p></body></html>")
@@ -121,6 +158,7 @@ func proxyhandler(w *response.Writer, req request.Request) {
 	newURL := ""
 	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
 		newURL = getProxyURL(req.RequestLine.RequestTarget)
+		log.Printf("Proxying to URL: %s\n", newURL)
 	}
 	res, err := http.Get(newURL)
 	if err != nil {

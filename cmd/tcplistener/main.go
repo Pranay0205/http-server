@@ -13,7 +13,7 @@ func main() {
 
 	listener, err := net.Listen("tcp", port)
 	if err != nil {
-		log.Fatalf("Error listening for TCP traffic: %s\n", err.Error())
+		log.Printf("Error listening for TCP traffic: %s\n", err.Error())
 		return
 	}
 
