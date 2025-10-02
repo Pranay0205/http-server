@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"http-server/internal/headers"
 	"http-server/internal/request"
 	"http-server/internal/response"
 	"http-server/internal/server"
@@ -29,7 +30,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-	log.Println()
+	fmt.Println()
 	log.Println("Server gracefully stopped")
 }
 
@@ -106,19 +107,20 @@ func streamProxyResponse(w *response.Writer, res *http.Response) {
 		log.Println("Error writing chunked body done:", err)
 	}
 
-	sha256 := fmt.Sprintf("%x", sha256.Sum256([]byte(responseBody)))
+	trailers := headers.NewHeaders()
 
-	err = w.Header().SetTrailer("X-Content-SHA256", sha256)
-	if err != nil {
-		log.Printf("Error setting SHA256 trailer: %v", err)
-	}
-
-	err = w.Header().SetTrailer("X-Content-Length", fmt.Sprintf("%d", len(responseBody)))
+	err = trailers.SetTrailer("X-Content-Length", fmt.Sprintf("%d", len(responseBody)))
 	if err != nil {
 		log.Printf("Error setting length trailer: %v", err)
 	}
 
-	w.WriteTrailers(w.Headers)
+	sha256 := fmt.Sprintf("%x", sha256.Sum256([]byte(responseBody)))
+	err = trailers.SetTrailer("X-Content-SHA256", sha256)
+	if err != nil {
+		log.Printf("Error setting SHA256 trailer: %v", err)
+	}
+
+	w.WriteTrailers(trailers)
 }
 
 func getProxyURL(requestTarget string) string {

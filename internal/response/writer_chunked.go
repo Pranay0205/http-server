@@ -28,7 +28,7 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 	if w.writerState != stateHeadersWritten {
 		return 0, fmt.Errorf("must write headers before body")
 	}
-	body := []byte("0\r\n\r\n")
+	body := []byte("0\r\n")
 	log.Printf("end of the file reached!\n")
 	w.Body = append(w.Body, body...)
 

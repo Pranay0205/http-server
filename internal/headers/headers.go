@@ -146,17 +146,7 @@ func (h Headers) Announce(trailers string) error {
 }
 
 func (h Headers) SetTrailer(key, value string) error {
-	announced := h.Get("trailer")
-	announcedNames := strings.Split(announced, ",")
-
 	lowerKey := strings.ToLower(strings.TrimSpace(key))
-
-	for _, name := range announcedNames {
-		if strings.ToLower(strings.TrimSpace(name)) == lowerKey {
-			h[lowerKey] = value
-			return nil
-		}
-	}
-
-	return fmt.Errorf("trailer %s was not announced", key)
+	h[lowerKey] = value
+	return nil
 }

@@ -8,12 +8,16 @@ import (
 )
 
 func (w *Writer) WriteTrailers(h headers.Headers) error {
-
 	if w.writerState != stateBodyWritten {
 		return fmt.Errorf("trailer already written or invalid state")
 	}
 
-	trailerValues := h.Get("Trailer")
+	defer w.SetState(stateTrailerWritten)
+
+	trailerValues := w.Header().Get("Trailer")
+	if trailerValues == "" {
+		return fmt.Errorf("no trailers announced")
+	}
 
 	trailerNames := strings.Split(trailerValues, ",")
 
@@ -22,9 +26,8 @@ func (w *Writer) WriteTrailers(h headers.Headers) error {
 		lowerKey := strings.ToLower(key)
 
 		v, ok := h[lowerKey]
-
 		if !ok {
-
+			log.Printf("announced trailer %s not found in provided headers", key)
 			continue
 		}
 
@@ -35,6 +38,5 @@ func (w *Writer) WriteTrailers(h headers.Headers) error {
 
 	w.Body = append(w.Body, crlf...)
 
-	w.SetState(stateTrailerWritten)
 	return nil
 }
